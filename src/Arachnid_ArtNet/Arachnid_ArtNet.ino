@@ -14,6 +14,7 @@
 // Timers---------
 elapsedMillis lightUpdate;
 elapsedMillis lastPacketTimer;
+elapsedMillis lastReadTime;
 
 bool isArtnet = false;
 
@@ -60,8 +61,6 @@ struct RGBTripple {
 
 // ArtNet -----------------------------------------------
 Artnet artnet;
-#define ARTNET_TIMEOUT 500
-
 byte DMXData[512] = {0};
 
 //END HARDWARE SETUP =================================================================
@@ -91,6 +90,9 @@ RGBTripple hexToRGB(int);
 bool updateDMX();
 void updateLEDDMX();
 void updateStepperDMX();
+
+//ArtNet
+void onDmxFrame(uint16_t, uint16_t, uint8_t, uint8_t*);
 
 //SYSTEM
 void stopWithError();
@@ -125,26 +127,30 @@ void setup() {
   FastLED.addLeds(octoBridge, leds, NUM_LED_FIXTURES * LEDS_PER_FIXTURE).setCorrection(TEMPERATURE_OFFSET);
 
   // Hardware Calibration------------------------------
-  setAllColor(0xfc0390);
+  setAllColor(HOME_COLOR);
   FastLED.show();
   
   if (!cardinal.homeSteppers(1,1,10000)) stopWithError();
 
+  setAllTemperature(Candle);
+  FastLED.show();
+
   // DMX SETUP-----------------------------------------
   artnet.begin(mac,ip);
-  lastPacketTimer = ARTNET_TIMEOUT + 1;
+  artnet.setArtDmxCallback(onDmxFrame);
+  lastPacketTimer = ARTNET_TIMEOUT_MILLIS + 1;
   
 }
 
 // MAIN++++++++++++++++++++++++++++++++++++++++++++++++
 void loop() {
-  // DMX Reading-----------
-  if (artnet.read() == ART_DMX) { lastPacketTimer = 0; for (int a = 0; a < 512; a++) DMXData[a] = (byte) artnet.getDmxFrame()[a]; }
+  // ArtNet Reading-----------
+  if (lastReadTime > ARTNET_POLL_MILLIS) { artnet.read(); lastReadTime = 0; }  // read to the callback
 
   // ACTION ZONE===============================================================
   
   // ARTNET------------------------------------
-  if (lastPacketTimer < ARTNET_TIMEOUT) { // if artNet
+  if (lastPacketTimer < ARTNET_TIMEOUT_MILLIS) { // if artNet
     digitalWrite(13, HIGH);
     cardinal.setTimeoutMillis(10000);
     updateStepperDMX();
@@ -155,12 +161,15 @@ void loop() {
   else {
     digitalWrite(13, LOW);
     cardinal.setTimeoutMillis(3000);
-    for (short s = 1; s <= NUM_STEPPERS; s++) { cardinal.setStepperSpeed(s, 2000 * MICROSTEPS); cardinal.setStepperPosition(s, 0); }
+    for (short s = 1; s <= NUM_STEPPERS; s++) { 
+      cardinal.setStepperAcceleration(s, DEFAULT_SPEED * MICROSTEPS); 
+      cardinal.setStepperSpeed(s, DEFAULT_ACCELERATION * MICROSTEPS); 
+      cardinal.setStepperPosition(s, 0); 
+    }
     setAllTemperature(Candle);
   }
 
   // LEDS----------------------------------
-  FastLED.show(); lightUpdate = 0;
   if (lightUpdate > LED_REFRESH_MILLIS) { FastLED.show(); lightUpdate = 0; }
 
   // STEPPER UPDATING----------------------
@@ -273,6 +282,12 @@ void updateStepperDMX() {
   }
 }
 
+
+// ARTNET============================================
+void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t* data) {
+  lastPacketTimer = 0; 
+  for (int a = 0; a < 512; a++) DMXData[a] = (byte) artnet.getDmxFrame()[a];
+}
 
 
 // SYSTEM============================================

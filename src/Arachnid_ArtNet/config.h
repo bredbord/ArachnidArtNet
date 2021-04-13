@@ -7,8 +7,8 @@
 // BASIC SETUP============================================================
 
 // Artnet-----------------------
-byte ip[] = {10, 0, 0, 9};
-byte mac[] = {0x04, 0xE9, 0xE5, 0x00, 0x69, 0xEC};
+  const byte ip[] = {10, 0, 0, 9};
+  const byte mac[] = {0x04, 0xE9, 0xE5, 0x00, 0x69, 0xEC};
 
 // DMX--------------------
   #define DMX_START 1
@@ -22,10 +22,10 @@ byte mac[] = {0x04, 0xE9, 0xE5, 0x00, 0x69, 0xEC};
   #define NUM_STEPPERS (NUM_MOTION_FIXTURES)
   #define NUM_SWITCHES (NUM_STEPPERS)
   #define MICROSTEPS 16
-  #define DEFUALT_SPEED 2000
+  #define DEFAULT_SPEED 2000
   #define DEFAULT_ACCELERATION 250
-  #define STEPPER_MAX_SPEED 500
-  #define STEPPER_MIN_SPEED 1
+  #define STEPPER_MAX_SPEED 3000
+  #define STEPPER_MIN_SPEED 10
 
 // LEDs--------------------
   #define LEDS_PER_FIXTURE 25
@@ -48,6 +48,10 @@ byte mac[] = {0x04, 0xE9, 0xE5, 0x00, 0x69, 0xEC};
   */
 
 //ADVANCED================================================================
+
+// ARTNET----------------------
+#define ARTNET_TIMEOUT_MILLIS 500
+#define ARTNET_POLL_MILLIS 1
 
 // DMX-------------------------
 #define OPERATIONS_PER_BAR 3
@@ -85,5 +89,4 @@ byte mac[] = {0x04, 0xE9, 0xE5, 0x00, 0x69, 0xEC};
 #define LED_DMX_RX_SLEEP 10
 #define LED_STDBY 0
 
-#define HOME_COLOR 0X00FF11
-#define NON_HOME_COLOR 0x006EFF
+#define HOME_COLOR 0xfc0390

@@ -5,17 +5,17 @@
 */
 
 // Libraries
-#include <TeensyDMX.h>
 #include <SafetyStepperArray.h>
+#include <SPI.h>
+#include "Teensy4_1ArtNet.h"
 #include "FastLED4Teensy4.h"
 #include "config.h"
-#include "Teensy4_1ArtNet.h"
 
 // Timers---------
-elapsedMillis lastFrameTimer;  // when last DMX frame was received -- for float Lock
 elapsedMillis lightUpdate;
+elapsedMillis lastPacketTimer;
 
-bool floatLock = false;
+bool isArtnet = false;
 
 // HARDWARE SETUP==============================================================
 SafetyStepperArray cardinal = SafetyStepperArray(ENABLE_PIN, SLEEP_PIN, 1000 * MICROSTEPS, 1000* MICROSTEPS);
@@ -58,13 +58,11 @@ struct RGBTripple {
   byte blue;
 };
 
-// DMX -----------------------------------------------
-namespace teensydmx = ::qindesign::teensydmx;
-teensydmx::Receiver dmxRx{Serial1};
-uint8_t DMXData[DMX_LENGTH]{0};
+// ArtNet -----------------------------------------------
+Artnet artnet;
+#define ARTNET_TIMEOUT 500
 
-#define IMMEDIATE_DMX_TIMEOUT 100   // Millis for considered DMX timeout
-#define FLOAT_LOCK_TIMEOUT 2000  // Millis for Floating Lock timeout
+byte DMXData[512] = {0};
 
 //END HARDWARE SETUP =================================================================
 
@@ -126,54 +124,47 @@ void setup() {
   FastLED.setBrightness(255);
   FastLED.addLeds(octoBridge, leds, NUM_LED_FIXTURES * LEDS_PER_FIXTURE).setCorrection(TEMPERATURE_OFFSET);
 
-  // DMX SETUP-----------------------------------------
-  //dmxRx.begin();
-  lastFrameTimer = IMMEDIATE_DMX_TIMEOUT;
-
   // Hardware Calibration------------------------------
-  //setAllColor(0xfc0390);
-  //FastLED.show();
+  setAllColor(0xfc0390);
+  FastLED.show();
   
-  //if (!cardinal.homeSteppers(1,1,10000)) stopWithError();
+  if (!cardinal.homeSteppers(1,1,10000)) stopWithError();
+
+  // DMX SETUP-----------------------------------------
+  if (!artnet.begin(mac, ip)) stopWithError();
+  lastPacketTimer = ARTNET_TIMEOUT + 1;
+  
 }
 
 // MAIN++++++++++++++++++++++++++++++++++++++++++++++++
 void loop() {
   // DMX Reading-----------
-  //dmxRx.readPacket(DMXData, DMX_START, DMX_LENGTH);
-
-  // DMX Floating Line Lock Check-----------
-  if (read > 0 && !floatLock) { lastFrameTimer = 0; }  // We are cont. receiving DMX, so reset counter and unlock
-  else if (lastFrameTimer >= IMMEDIATE_DMX_TIMEOUT && lastFrameTimer <= FLOAT_LOCK_TIMEOUT) floatLock = true;  //if we are in between the "noise" zone, lock
-  if (lastFrameTimer > FLOAT_LOCK_TIMEOUT) { floatLock = false; }  // if we move outside the noise zone, unlock.
-
+  if (artnet.read() == ART_DMX) { lastPacketTimer = 0; for (int a = 0; a < 512; a++) DMXData[a] = (byte) artnet.getDmxFrame()[a]; }
 
   // ACTION ZONE===============================================================
   
-  // DMX------------------------------------
-  if (!floatLock && lastFrameTimer < IMMEDIATE_DMX_TIMEOUT) { // if we are not in floatLock, and the DMX connection is valid
-    
+  // ARTNET------------------------------------
+  if (lastPacketTimer < ARTNET_TIMEOUT) { // if artNet
     digitalWrite(13, HIGH);
-    //cardinal.setTimeoutMillis(10000);
-    //updateStepperDMX();
-    //updateLEDDMX();
+    cardinal.setTimeoutMillis(10000);
+    updateStepperDMX();
+    updateLEDDMX();
   } 
 
-  // NO DMX---------------------------------
+  // NO ARTNET---------------------------------
   else {
     digitalWrite(13, LOW);
-    //cardinal.setTimeoutMillis(3000);
+    cardinal.setTimeoutMillis(3000);
     for (short s = 1; s <= NUM_STEPPERS; s++) { cardinal.setStepperSpeed(s, 1000 * MICROSTEPS); cardinal.setStepperPosition(s, 0); }
-    //setAllTemperature(Candle);
+    setAllTemperature(Candle);
   }
 
   // LEDS----------------------------------
   FastLED.show(); lightUpdate = 0;
-  //if (lightUpdate > LED_REFRESH_MILLIS) { FastLED.show(); lightUpdate = 0; }
+  if (lightUpdate > LED_REFRESH_MILLIS) { FastLED.show(); lightUpdate = 0; }
 
   // STEPPER UPDATING----------------------
-  //cardinal.run();
-  */
+  cardinal.run();
   
 }
 

@@ -6,6 +6,10 @@
 
 // BASIC SETUP============================================================
 
+// Artnet-----------------------
+byte ip[] = {10, 0, 0, 9};
+byte mac[] = {0x04, 0xE9, 0xE5, 0x00, 0x69, 0xEC};
+
 // DMX--------------------
   #define DMX_START 1
 
@@ -18,13 +22,13 @@
   #define NUM_STEPPERS (NUM_MOTION_FIXTURES)
   #define NUM_SWITCHES (NUM_STEPPERS)
   #define MICROSTEPS 16
-  #define DEFUALT_SPEED 500
+  #define DEFUALT_SPEED 2000
   #define DEFAULT_ACCELERATION 250
   #define STEPPER_MAX_SPEED 500
   #define STEPPER_MIN_SPEED 1
 
 // LEDs--------------------
-  #define LEDS_PER_FIXTURE 12
+  #define LEDS_PER_FIXTURE 25
   #define BARS_PER_FIXTURE 6
   #define TEMPERATURE_OFFSET TypicalSMD5050
 

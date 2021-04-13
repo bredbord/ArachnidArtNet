@@ -131,7 +131,7 @@ void setup() {
   if (!cardinal.homeSteppers(1,1,10000)) stopWithError();
 
   // DMX SETUP-----------------------------------------
-  if (!artnet.begin(mac, ip)) stopWithError();
+  artnet.begin(mac,ip);
   lastPacketTimer = ARTNET_TIMEOUT + 1;
   
 }
@@ -155,7 +155,7 @@ void loop() {
   else {
     digitalWrite(13, LOW);
     cardinal.setTimeoutMillis(3000);
-    for (short s = 1; s <= NUM_STEPPERS; s++) { cardinal.setStepperSpeed(s, 1000 * MICROSTEPS); cardinal.setStepperPosition(s, 0); }
+    for (short s = 1; s <= NUM_STEPPERS; s++) { cardinal.setStepperSpeed(s, 2000 * MICROSTEPS); cardinal.setStepperPosition(s, 0); }
     setAllTemperature(Candle);
   }
 
@@ -266,10 +266,6 @@ void updateStepperDMX() {
   
   for (short s = 0; s < NUM_STEPPERS; s++) {
     DMXOffset = (s * OPERATIONS_PER_FIXTURE) + DMX_START;  // calculate the DMX data location
-    //DMXOffset = (OPERATIONS_PER_STEPPER * s);
-    // Speed Section-------------------------------------------------------
-
-    //cardinal.setStepperSpeed(s+1, speedTarget);
 
     // Motion Section------------------------------------------------------
     motionTarget = DMXData[DMXOffset - 1] * MICROSTEPS*4;  // get the new stepper position

@@ -6,7 +6,7 @@
 #ifndef TEENSY_FASTLED_BRIDGE
 #define TEENSY_FASTLED_BRIDGE
 
-#include <Arduin.h>
+#include <Arduino.h>
 #include <OctoWS2811.h>
 #include <FastLED.h>
 

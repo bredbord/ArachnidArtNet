@@ -19,12 +19,10 @@ elapsedMillis lastReadTime;
 bool isArtnet = false;
 
 // HARDWARE SETUP==============================================================
-SafetyStepperArray cardinal = SafetyStepperArray(ENABLE_PIN, SLEEP_PIN, 1000 * MICROSTEPS, 1000* MICROSTEPS);
+SafetyStepperArray cardinal = SafetyStepperArray(ENABLE_PIN, SLEEP_PIN, ABSOLUTE_MAX_SPEED, ABSOLUTE_MAX_ACCELERATION);
 
 // Onboard pins--------------------------------------
 constexpr uint8_t statusLEDPin = STATUS_LED_PIN;
-uint8_t statusLEDBrightness = 0;
-
 
 // LEDS-----------------------------------------------
 
@@ -62,6 +60,8 @@ struct RGBTripple {
 // ArtNet -----------------------------------------------
 Artnet artnet;
 byte DMXData[512] = {0};
+
+// DMX OUT-----------------------------------------------
 
 //END HARDWARE SETUP =================================================================
 
@@ -129,7 +129,8 @@ void setup() {
   // Hardware Calibration------------------------------
   setAllColor(HOME_COLOR);
   FastLED.show();
-  
+
+  cardinal.setHomeSpeed(ABSOLUTE_DEFAULT_SPEED);
   if (!cardinal.homeSteppers(1,1,10000)) stopWithError();
 
   setAllTemperature(Candle);
@@ -144,15 +145,15 @@ void setup() {
 
 // MAIN++++++++++++++++++++++++++++++++++++++++++++++++
 void loop() {
-  // ArtNet Reading-----------
-  if (lastReadTime > ARTNET_POLL_MILLIS) { artnet.read(); lastReadTime = 0; }  // read to the callback
+  // ArtNet Configuration and Reading----------
+  if (lastReadTime > ARTNET_POLL_MILLIS) { artnet.read(); lastReadTime = 0;}  // read to the callback
 
   // ACTION ZONE===============================================================
   
   // ARTNET------------------------------------
   if (lastPacketTimer < ARTNET_TIMEOUT_MILLIS) { // if artNet
     digitalWrite(13, HIGH);
-    cardinal.setTimeoutMillis(10000);
+    cardinal.setTimeoutMillis(30000);
     updateStepperDMX();
     updateLEDDMX();
   } 
@@ -162,8 +163,8 @@ void loop() {
     digitalWrite(13, LOW);
     cardinal.setTimeoutMillis(3000);
     for (short s = 1; s <= NUM_STEPPERS; s++) { 
-      cardinal.setStepperAcceleration(s, DEFAULT_SPEED * MICROSTEPS); 
-      cardinal.setStepperSpeed(s, DEFAULT_ACCELERATION * MICROSTEPS); 
+      cardinal.setStepperAcceleration(s, ABSOLUTE_DEFAULT_SPEED); 
+      cardinal.setStepperSpeed(s, ABSOLUTE_DEFAULT_ACCELERATION); 
       cardinal.setStepperPosition(s, 0); 
     }
     setAllTemperature(Candle);
@@ -227,7 +228,7 @@ void setBarTemperature(int bar, byte fixture, int temp) {
   int ledOffset; bar--; fixture--;
   for (int pixel = 0; pixel < LEDS_PER_BAR; pixel++) { // for each pixel in the bar
     FastLED.setTemperature(temp);
-    ledOffset = (fixture * LEDS_PER_FIXTURE) + (bar * LEDS_PER_BAR) + pixel;   //calculate led position
+    ledOffset = (fixture * LEDS_PER_FIXTURE) + (bar * LEDS_PER_BAR) + pixel;   // calculate led position
     leds[ledOffset] = temp;
   }
 }
@@ -258,35 +259,32 @@ RGBTripple hexToRGB(int hex) {
 // DMX================================================
 void updateLEDDMX() {
   int DMXOffset;  // offset for DMX data
-    
   for (int f = 1; f <= NUM_LED_FIXTURES; f++) {                 // for each fixture
     for (int b = 1; b <= BARS_PER_FIXTURE; b++) {                       // for each bar in the fixture
   
-        DMXOffset = (((b-1) * OPERATIONS_PER_BAR) + OPERATIONS_PER_STEPPER) * f;  // and dmx data location
-        //DMXOffset = (NUM_STEPPERS * OPERATIONS_PER_STEPPER) + ((b-1) * OPERATIONS_PER_BAR) * f;
+        //DMXOffset = (((b-1) * OPERATIONS_PER_BAR) + OPERATIONS_PER_STEPPER) * f;  // and dmx data location
+        DMXOffset = ((NUM_STEPPERS * OPERATIONS_PER_STEPPER) + ((b-1) * OPERATIONS_PER_BAR) * f) + DMX_START;
         setBarColor(b, f, DMXData[DMXOffset], DMXData[DMXOffset+1], DMXData[DMXOffset+2]);  // set bar b at fixture f to the DMX values
     }
   }
 }
 
 void updateStepperDMX() {
-  int speedTarget, motionTarget;
-  byte DMXOffset;
-  
+  int DMXOffset;
   for (short s = 0; s < NUM_STEPPERS; s++) {
-    DMXOffset = (s * OPERATIONS_PER_FIXTURE) + DMX_START;  // calculate the DMX data location
-
-    // Motion Section------------------------------------------------------
-    motionTarget = DMXData[DMXOffset - 1] * MICROSTEPS*4;  // get the new stepper position
-    cardinal.setStepperPosition(s+1, motionTarget);
+    DMXOffset = DMX_START + (s * OPERATIONS_PER_STEPPER) - 1;
+    
+    cardinal.setStepperPosition(s+1, DMXData[DMXOffset] * 100);
+    cardinal.setStepperSpeed(s+1, map(DMXData[DMXOffset+1], 0, 255, ABSOLUTE_MAX_SPEED, ABSOLUTE_MIN_SPEED));
+    cardinal.setStepperAcceleration(s+1, map(DMXData[DMXOffset+1], 0, 255, ABSOLUTE_MAX_ACCELERATION, ABSOLUTE_MIN_ACCELERATION));
   }
 }
 
 
 // ARTNET============================================
 void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t* data) {
-  lastPacketTimer = 0; 
-  for (int a = 0; a < 512; a++) DMXData[a] = (byte) artnet.getDmxFrame()[a];
+  lastPacketTimer = 0;
+  if (universe == UNIVERSE) for (int a = 0; a < 512; a++) DMXData[a] = (byte) artnet.getDmxFrame()[a];
 }
 
 
@@ -294,7 +292,5 @@ void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t* d
 void stopWithError() {
   setAllColor(255, 0, 0);
   FastLED.show();
-
   cardinal.emergencyStop();
-  
 }

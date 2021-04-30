@@ -1,12 +1,16 @@
 /* Arachnid -- Main Driver
  * Larson Rivera (a.k.a bredbord)
- * Last Modified: 11/14/2020
- * Version 3.1
+ * Last Modified: 4/28/2020
+ * Version 3.5
 */
 
 // Libraries
 #include <SafetyStepperArray.h>
 #include <SPI.h>
+#include <IRremote.h>
+#include <Bounce2.h>
+
+// Local Dependencies
 #include "Teensy4_1ArtNet.h"
 #include "FastLED4Teensy4.h"
 #include "config.h"
@@ -16,13 +20,17 @@ elapsedMillis lightUpdate;
 elapsedMillis lastPacketTimer;
 elapsedMillis lastReadTime;
 
-bool isArtnet = false;
+bool isArtnet = false;  // activly receiving artnet
+bool artnetEnabled = false;  // enabled artnet
+bool artnetToggle = false;  // mode toggling
 
 // HARDWARE SETUP==============================================================
 SafetyStepperArray cardinal = SafetyStepperArray(ENABLE_PIN, SLEEP_PIN, ABSOLUTE_MAX_SPEED, ABSOLUTE_MAX_ACCELERATION);
 
 // Onboard pins--------------------------------------
 constexpr uint8_t statusLEDPin = STATUS_LED_PIN;
+Bounce controlArtnet = Bounce();
+Bounce emergencyStop = Bounce();
 
 // LEDS-----------------------------------------------
 
@@ -61,7 +69,37 @@ struct RGBTripple {
 Artnet artnet;
 byte DMXData[512] = {0};
 
-// DMX OUT-----------------------------------------------
+// IR Input----------------------------------------------
+IRrecv irrecv(41);
+decode_results results;
+
+byte colorMode = 0;
+#define MAX_COLOR_MODE 9
+
+byte tempMode = 0;
+#define MAX_TEMP_MODE 12
+
+constexpr long irData[] = 
+{ 
+  16753245,
+  16736925,
+  16712445,
+  16761405,
+  16769055,
+  16754775,
+  16748655,
+  16738455,
+  16750695,
+  16756815,
+  16724175,
+  16718055,
+  16743045,
+  16716015,
+  16726215,
+  71952287,
+  16728765,
+  16730805
+};
 
 //END HARDWARE SETUP =================================================================
 
@@ -93,9 +131,18 @@ void updateStepperDMX();
 
 //ArtNet
 void onDmxFrame(uint16_t, uint16_t, uint8_t, uint8_t*);
+void modeCheck(int);
+void toggleArtnet();
 
 //SYSTEM
 void stopWithError();
+void updateHardware();
+
+//IR
+void colorCheck(byte);
+void tempCheck(byte);
+void motionCheck(byte);
+void decodeIrData(long);
 
 
 // ================================================================================
@@ -105,6 +152,26 @@ void setup() {
   
   // HARD CALL PIN SETUP-------------------------------
   pinMode(statusLEDPin, OUTPUT);
+  pinMode(ARTNET_START_PIN, INPUT_PULLUP);
+  pinMode(EMERGENCY_STOP_PIN, INPUT_PULLUP);
+
+  // LED SETUP-----------------------------------------
+  octoLEDs.begin(); // start the OctoWS line
+  octoBridge = new FastLED4Teensy4<RGB, WS2811_800kHz>(&octoLEDs);  // init new led bridge
+
+  FastLED.setBrightness(255);
+  FastLED.addLeds(octoBridge, leds, NUM_LED_FIXTURES * LEDS_PER_FIXTURE).setCorrection(TEMPERATURE_OFFSET);
+
+  // Hardware Calibration------------------------------
+  setAllColor(HOME_COLOR);
+  FastLED.show();
+
+  // Buttons-------------------------------------------
+  controlArtnet.attach(ARTNET_START_PIN);
+  emergencyStop.attach(EMERGENCY_STOP_PIN);
+
+  controlArtnet.interval(5);
+  emergencyStop.interval(5);
 
   // Cardinal Setup------------------------------------
   cardinal.addStepper(10, 9, 11);
@@ -118,40 +185,26 @@ void setup() {
 
   cardinal.begin();
 
-  
-  // LED SETUP-----------------------------------------
-  octoLEDs.begin(); // start the OctoWS line
-  octoBridge = new FastLED4Teensy4<RGB, WS2811_800kHz>(&octoLEDs);  // init new led bridge
-
-  FastLED.setBrightness(255);
-  FastLED.addLeds(octoBridge, leds, NUM_LED_FIXTURES * LEDS_PER_FIXTURE).setCorrection(TEMPERATURE_OFFSET);
-
-  // Hardware Calibration------------------------------
-  setAllColor(HOME_COLOR);
-  FastLED.show();
+  // IR Setup-----------------------------------------
+  irrecv.enableIRIn(); // Start the receiver
 
   cardinal.setHomeSpeed(ABSOLUTE_DEFAULT_SPEED);
   if (!cardinal.homeSteppers(1,1,10000)) stopWithError();
 
-  setAllTemperature(Candle);
+  setAllTemperature(WarmFluorescent);
   FastLED.show();
-
-  // DMX SETUP-----------------------------------------
-  artnet.begin(mac,ip);
-  artnet.setArtDmxCallback(onDmxFrame);
-  lastPacketTimer = ARTNET_TIMEOUT_MILLIS + 1;
   
 }
 
 // MAIN++++++++++++++++++++++++++++++++++++++++++++++++
 void loop() {
   // ArtNet Configuration and Reading----------
-  if (lastReadTime > ARTNET_POLL_MILLIS) { artnet.read(); lastReadTime = 0;}  // read to the callback
+  if (artnetToggle) artnet.read();
 
   // ACTION ZONE===============================================================
   
   // ARTNET------------------------------------
-  if (lastPacketTimer < ARTNET_TIMEOUT_MILLIS) { // if artNet
+  if (lastPacketTimer < ARTNET_TIMEOUT_MILLIS && artnetToggle) { // if artNet
     digitalWrite(13, HIGH);
     cardinal.setTimeoutMillis(30000);
     updateStepperDMX();
@@ -167,14 +220,23 @@ void loop() {
       cardinal.setStepperSpeed(s, ABSOLUTE_DEFAULT_ACCELERATION); 
       cardinal.setStepperPosition(s, 0); 
     }
-    setAllTemperature(Candle);
   }
 
   // LEDS----------------------------------
   if (lightUpdate > LED_REFRESH_MILLIS) { FastLED.show(); lightUpdate = 0; }
 
+  // IR------------------------------------
+  if (lastReadTime > 32 && irrecv.decode(&results)) {
+      decodeIrData(results.value);
+      irrecv.resume();
+      lastReadTime = 0; 
+    }
+
   // STEPPER UPDATING----------------------
   cardinal.run();
+
+  // Hardware updating---------------------
+  updateHardware();
   
 }
 
@@ -254,8 +316,6 @@ RGBTripple hexToRGB(int hex) {
 }
 
 
-
-
 // DMX================================================
 void updateLEDDMX() {
   int DMXOffset;  // offset for DMX data
@@ -287,10 +347,173 @@ void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t* d
   if (universe == UNIVERSE) for (int a = 0; a < 512; a++) DMXData[a] = (byte) artnet.getDmxFrame()[a];
 }
 
+void toggleArtnet() {
+  if (!artnetEnabled) {
+    artnet.begin(mac,ip);
+    artnet.setArtDmxCallback(onDmxFrame);
+    lastPacketTimer = ARTNET_TIMEOUT_MILLIS + 1;
+
+    artnetEnabled = true;
+  }
+
+  if (!artnetToggle) { artnetToggle = true; FastLED.setBrightness(255); }
+  else { artnetToggle = false; setAllTemperature(WarmFluorescent); }
+}
+
+// HARDWARE==========================================
+void updateHardware() {
+  emergencyStop.update();
+  controlArtnet.update();
+
+  if (emergencyStop.read() == LOW) stopWithError();
+  if (controlArtnet.read() == LOW) toggleArtnet();
+}
 
 // SYSTEM============================================
 void stopWithError() {
   setAllColor(255, 0, 0);
   FastLED.show();
   cardinal.emergencyStop();
+}
+
+//IR DATA=========================================================================
+
+void colorCheck(byte mode) {
+  switch (mode) {
+    case 1:
+      setAllColor(255, 0, 0);
+      break;
+
+    case 2:
+      setAllColor(255, 0, 157);
+      break;
+
+    case 3:
+      setAllColor(255, 128, 0);
+      break;
+
+    case 4:
+      setAllColor(255, 255, 0);
+      break;
+
+    case 5:
+      setAllColor(0, 255, 0);
+      break;
+
+    case 6:
+      setAllColor(57, 255, 20);
+      break;
+
+    case 7:
+      setAllColor(0, 0, 255);
+      break;
+
+    case 8:
+      setAllColor(0, 238, 255);
+
+    case 9:
+      setAllColor(153, 0, 255);
+      break;
+
+  }
+}
+
+void tempCheck(byte mode) {
+  switch(mode) {
+    case 1:
+      setAllTemperature(Candle);
+      break;
+
+    case 2:
+      setAllTemperature(Tungsten40W);
+      break;
+
+    case 3:
+      setAllTemperature(Tungsten100W);
+      break;
+
+    case 4:
+      setAllTemperature(Halogen);
+      break;
+
+    case 5:
+      setAllTemperature(CarbonArc);
+      break;
+
+    case 6:
+      setAllTemperature(HighNoonSun);
+      break;
+
+    case 7:
+      setAllTemperature(DirectSunlight);
+      break;
+
+    case 8:
+      setAllTemperature(OvercastSky);
+      break;
+
+    case 9:
+      setAllTemperature(ClearBlueSky);
+      break;
+
+    case 10:
+      setAllTemperature(WarmFluorescent);
+      break;
+
+    case 11:
+      setAllTemperature(StandardFluorescent);
+      break;
+
+    case 12:
+      setAllTemperature(CoolWhiteFluorescent);
+      break;
+  }
+}
+
+void motionCheck(byte mode) {
+  switch(mode) {
+    case 1:
+    for (short s = 1; s <= NUM_STEPPERS; s++) cardinal.setStepperPosition(s, 0); 
+      break;
+  }
+}
+
+void decodeIrData(long irdata) {
+  byte i = 0;
+  while (i < 18) { if (irData[i] == irdata) { break; } i++; }
+
+  switch(i) {
+    case 0:
+      stopWithError();
+      break;
+      
+    case 1:
+      setAllTemperature(WarmFluorescent);
+      break;
+
+    case 2:
+      toggleArtnet();
+      break;
+    
+    case 3:
+      if (FastLED.getBrightness() - 25 > 0) FastLED.setBrightness(FastLED.getBrightness() - 25);
+      else FastLED.setBrightness(0);
+      break;
+
+    case 4:
+      if (FastLED.getBrightness() + 25 < 255) FastLED.setBrightness(FastLED.getBrightness() + 25);
+      else FastLED.setBrightness(255);
+      break;
+    
+    case 6:
+      if (++colorMode > MAX_COLOR_MODE) colorMode = 0;
+      colorCheck(colorMode);
+      break;
+
+    case 10:
+      if (++tempMode > MAX_TEMP_MODE) tempMode = 0;
+      tempCheck(tempMode);
+      break;
+      
+  }
 }

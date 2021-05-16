@@ -128,6 +128,7 @@ RGBTripple hexToRGB(int);
 bool updateDMX();
 void updateLEDDMX();
 void updateStepperDMX();
+int getSafe(long);
 
 //ArtNet
 void onDmxFrame(uint16_t, uint16_t, uint8_t, uint8_t*);
@@ -189,7 +190,7 @@ void setup() {
   irrecv.enableIRIn(); // Start the receiver
 
   cardinal.setHomeSpeed(ABSOLUTE_DEFAULT_SPEED);
-  if (!cardinal.homeSteppers(1,1,10000)) stopWithError();
+  if (!cardinal.homeSteppers(1,2,10000)) stopWithError();
 
   setAllTemperature(WarmFluorescent);
   FastLED.show();
@@ -226,13 +227,15 @@ void loop() {
   if (lightUpdate > LED_REFRESH_MILLIS) { FastLED.show(); lightUpdate = 0; }
 
   // IR------------------------------------
-  if (lastReadTime > 32 && irrecv.decode(&results)) {
+  if (lastReadTime > IR_REFRESH_MILLIS && irrecv.decode(&results)) {
       decodeIrData(results.value);
       irrecv.resume();
       lastReadTime = 0; 
     }
+  
 
   // STEPPER UPDATING----------------------
+  for (short s = 1; s <= NUM_STEPPERS; s++) cardinal.setStepperSafePosition(s, getSafe(cardinal.getStepperPosition(s)));  // configure new safe positions
   cardinal.run();
 
   // Hardware updating---------------------
@@ -334,10 +337,20 @@ void updateStepperDMX() {
   for (short s = 0; s < NUM_STEPPERS; s++) {
     DMXOffset = DMX_START + (s * OPERATIONS_PER_STEPPER) - 1;
     
-    cardinal.setStepperPosition(s+1, DMXData[DMXOffset] * 100);
+    cardinal.setStepperPosition(s+1, DMXData[DMXOffset] * 120);
     cardinal.setStepperSpeed(s+1, map(DMXData[DMXOffset+1], 0, 255, ABSOLUTE_MAX_SPEED, ABSOLUTE_MIN_SPEED));
     cardinal.setStepperAcceleration(s+1, map(DMXData[DMXOffset+1], 0, 255, ABSOLUTE_MAX_ACCELERATION, ABSOLUTE_MIN_ACCELERATION));
   }
+}
+
+int getSafe(int pos) {
+  if (pos == 0) return 0;
+
+  int displacement = pos % (STEPS_PER_REV * MICROSTEPS);
+  byte rotations = pos / (STEPS_PER_REV * MICROSTEPS);
+  
+  if (displacement > (STEPS_PER_REV * MICROSTEPS)/2 ) return (rotations + 1) * (STEPS_PER_REV * MICROSTEPS);  // if we're closer to the next rev, return one rev up
+  else return rotations * STEPS_PER_REV * MICROSTEPS;  // otherwise, return current rev
 }
 
 

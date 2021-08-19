@@ -181,7 +181,7 @@ void setup() {
   cardinal.addStepper(35, 34, 36);
   cardinal.addStepper(39, 38, 40);
   cardinal.addStepper(16, 15, 17);
-  
+
   cardinal.begin();
   cardinal.reverseSteppers(true);
 

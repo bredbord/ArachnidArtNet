@@ -26,19 +26,19 @@
   #define STEPS_PER_REV 200
   
   #define DEFAULT_SPEED 200
-  #define MIN_SPEED 2
+  #define MIN_SPEED 5
   #define MAX_SPEED 400
 
-  #define DEFAULT_ACCELERATION 200
-  #define MIN_ACCELERATION 2
-  #define MAX_ACCELERATION 400
+  #define DEFAULT_ACCELERATION 150
+  #define MIN_ACCELERATION 5
+  #define MAX_ACCELERATION 300
 
 // LEDs--------------------
   #define LEDS_PER_FIXTURE 25
   #define BARS_PER_FIXTURE 25
   #define TEMPERATURE_OFFSET TypicalSMD5050
 
-  const byte LED_PIN_LIST[NUM_LED_FIXTURES] = {2, 14, 7, 8};  // sequencing of Teensy LED Pins
+  const byte LED_PIN_LIST[NUM_LED_FIXTURES] = {1, 5, 9, 24};  // sequencing of Teensy LED Pins
 
     // Pin layouts on Arachnid Mainboard:
   /*
@@ -78,8 +78,8 @@
 #define ABSOLUTE_MIN_ACCELERATION (MIN_ACCELERATION * MICROSTEPS)
 #define ABSOLUTE_MAX_ACCELERATION (MAX_ACCELERATION * MICROSTEPS)
 
-#define SLEEP_PIN 33
-#define ENABLE_PIN 32
+#define SLEEP_PIN 32
+#define ENABLE_PIN 0
 
 #define MOTION_TIMEOUT_DURATION 3000
 
@@ -92,9 +92,11 @@
 
 // SYSTEM----------------------
 #define STATUS_LED_PIN LED_BUILTIN
-#define ARTNET_START_PIN 1
-#define EMERGENCY_STOP_PIN 0
+#define IR_PIN 18
+#define ARTNET_START_PIN 19
+#define EMERGENCY_STOP_PIN 41
 
 #define DMX_LENGTH (((BARS_PER_FIXTURE * OPERATIONS_PER_BAR) * NUM_LED_FIXTURES) + (NUM_STEPPERS * OPERATIONS_PER_STEPPER));
 
+#define HOME_TIMEOUT 15000
 #define HOME_COLOR 0xfc0390

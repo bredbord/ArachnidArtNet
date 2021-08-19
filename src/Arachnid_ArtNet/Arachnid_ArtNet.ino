@@ -23,6 +23,7 @@ elapsedMillis lastReadTime;
 bool isArtnet = false;  // activly receiving artnet
 bool artnetEnabled = false;  // enabled artnet
 bool artnetToggle = false;  // mode toggling
+bool sysHomed = false;
 
 // HARDWARE SETUP==============================================================
 SafetyStepperArray cardinal = SafetyStepperArray(ENABLE_PIN, SLEEP_PIN, ABSOLUTE_MAX_SPEED, ABSOLUTE_MAX_ACCELERATION);
@@ -70,7 +71,7 @@ Artnet artnet;
 byte DMXData[512] = {0};
 
 // IR Input----------------------------------------------
-IRrecv irrecv(41);
+IRrecv irrecv(IR_PIN);
 decode_results results;
 
 byte colorMode = 0;
@@ -138,6 +139,7 @@ void toggleArtnet();
 //SYSTEM
 void stopWithError();
 void updateHardware();
+void sysHome();
 
 //IR
 void colorCheck(byte);
@@ -163,10 +165,6 @@ void setup() {
   FastLED.setBrightness(255);
   FastLED.addLeds(octoBridge, leds, NUM_LED_FIXTURES * LEDS_PER_FIXTURE).setCorrection(TEMPERATURE_OFFSET);
 
-  // Hardware Calibration------------------------------
-  setAllColor(HOME_COLOR);
-  FastLED.show();
-
   // Buttons-------------------------------------------
   controlArtnet.attach(ARTNET_START_PIN);
   emergencyStop.attach(EMERGENCY_STOP_PIN);
@@ -175,28 +173,25 @@ void setup() {
   emergencyStop.interval(5);
 
   // Cardinal Setup------------------------------------
-  cardinal.addStepper(10, 9, 11);
-  cardinal.addStepper(24, 12, 25);
-  cardinal.addStepper(27, 26, 28);
+  cardinal.addStepper(3, 2, 4);
+  cardinal.addStepper(7, 6, 8);
+  cardinal.addStepper(11, 10, 12);
+  cardinal.addStepper(26, 25, 27);
   cardinal.addStepper(30, 29, 31);
-  cardinal.addStepper(23, 22, 19);
-  cardinal.addStepper(18, 17, 40);
-  cardinal.addStepper(39, 38, 37);
-  cardinal.addStepper(36, 25, 34);
-
-  cardinal.reverseSteppers(true);
-
+  cardinal.addStepper(35, 34, 36);
+  cardinal.addStepper(39, 38, 40);
+  cardinal.addStepper(16, 15, 17);
+  
   cardinal.begin();
-
+  cardinal.reverseSteppers(true);
 
   // IR Setup-----------------------------------------
   irrecv.enableIRIn(); // Start the receiver
 
-  cardinal.setHomeSpeed(ABSOLUTE_DEFAULT_SPEED);
-  if (!cardinal.homeSteppers(1,2,10000)) stopWithError();
-
-  setAllTemperature(WarmFluorescent);
+  setAllTemperature(Tungsten100W);
   FastLED.show();
+
+  sysHome();
   
 }
 
@@ -324,6 +319,7 @@ RGBTripple hexToRGB(int hex) {
 
 // DMX================================================
 void updateLEDDMX() {
+  /*
   int DMXOffset;  // offset for DMX data
   for (int f = 1; f <= NUM_LED_FIXTURES; f++) {                 // for each fixture
     for (int b = 1; b <= BARS_PER_FIXTURE; b++) {                       // for each bar in the fixture
@@ -333,6 +329,8 @@ void updateLEDDMX() {
         setBarColor(b, f, DMXData[DMXOffset], DMXData[DMXOffset+1], DMXData[DMXOffset+2]);  // set bar b at fixture f to the DMX values
     }
   }
+  */
+  setAllColor(DMXData[0], DMXData[1], DMXData[2]);
 }
 
 void updateStepperDMX() {
@@ -390,6 +388,18 @@ void stopWithError() {
   setAllColor(255, 0, 0);
   FastLED.show();
   cardinal.emergencyStop();
+}
+
+void sysHome() {
+  setAllColor(HOME_COLOR);
+  FastLED.show();
+  
+  cardinal.setHomeSpeed(ABSOLUTE_DEFAULT_SPEED);
+  if (!cardinal.homeSteppers(1,1,HOME_TIMEOUT)) stopWithError();
+  else sysHomed = true;
+
+  setAllTemperature(Tungsten100W);
+  FastLED.show();
 }
 
 //IR DATA=========================================================================
@@ -504,10 +514,12 @@ void decodeIrData(long irdata) {
       break;
       
     case 1:
+      sysHome();
       setAllTemperature(WarmFluorescent);
       break;
 
     case 2:
+    if (!sysHomed) sysHome();
       toggleArtnet();
       break;
     
@@ -529,6 +541,10 @@ void decodeIrData(long irdata) {
     case 10:
       if (++tempMode > MAX_TEMP_MODE) tempMode = 0;
       tempCheck(tempMode);
+      break;
+
+    case 15:
+      sysHome();
       break;
       
   }

@@ -184,7 +184,10 @@ void setup() {
   cardinal.addStepper(39, 38, 37);
   cardinal.addStepper(36, 25, 34);
 
+  cardinal.reverseSteppers(true);
+
   cardinal.begin();
+
 
   // IR Setup-----------------------------------------
   irrecv.enableIRIn(); // Start the receiver
@@ -236,7 +239,7 @@ void loop() {
 
   // STEPPER UPDATING----------------------
   for (short s = 1; s <= NUM_STEPPERS; s++) cardinal.setStepperSafePosition(s, getSafe(cardinal.getStepperPosition(s)));  // configure new safe positions
-  cardinal.run();
+  cardinal.runSteppers();
 
   // Hardware updating---------------------
   updateHardware();

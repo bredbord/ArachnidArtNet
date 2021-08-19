@@ -25,13 +25,13 @@
   #define MICROSTEPS 16
   #define STEPS_PER_REV 200
   
-  #define DEFAULT_SPEED 400
-  #define MIN_SPEED 10
-  #define MAX_SPEED 1000
+  #define DEFAULT_SPEED 200
+  #define MIN_SPEED 2
+  #define MAX_SPEED 400
 
-  #define DEFAULT_ACCELERATION 500
-  #define MIN_ACCELERATION 5
-  #define MAX_ACCELERATION 1000
+  #define DEFAULT_ACCELERATION 200
+  #define MIN_ACCELERATION 2
+  #define MAX_ACCELERATION 400
 
 // LEDs--------------------
   #define LEDS_PER_FIXTURE 25

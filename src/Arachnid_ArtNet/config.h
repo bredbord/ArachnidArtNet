@@ -38,7 +38,7 @@
   #define BARS_PER_FIXTURE 25
   #define TEMPERATURE_OFFSET TypicalSMD5050
 
-  const byte LED_PIN_LIST[NUM_LED_FIXTURES] = {1, 5, 9, 24};  // sequencing of Teensy LED Pins
+  const byte LED_PIN_LIST[NUM_LED_FIXTURES] = {5, 9, 24, 28};  // sequencing of Teensy LED Pins
 
     // Pin layouts on Arachnid Mainboard:
   /*

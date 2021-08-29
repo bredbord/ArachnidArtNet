@@ -190,8 +190,6 @@ void setup() {
 
   setAllTemperature(Tungsten100W);
   FastLED.show();
-
-  sysHome();
   
 }
 
@@ -225,11 +223,13 @@ void loop() {
   if (lightUpdate > LED_REFRESH_MILLIS) { FastLED.show(); lightUpdate = 0; }
 
   // IR------------------------------------
+  /*
   if (lastReadTime > IR_REFRESH_MILLIS && irrecv.decode(&results)) {
       decodeIrData(results.value);
       irrecv.resume();
       lastReadTime = 0; 
     }
+    */
   
 
   // STEPPER UPDATING----------------------
@@ -330,7 +330,7 @@ void updateLEDDMX() {
     }
   }
   */
-  setAllColor(DMXData[0], DMXData[1], DMXData[2]);
+  setAllColor(0, 255, 0);
 }
 
 void updateStepperDMX() {
@@ -380,7 +380,10 @@ void updateHardware() {
   controlArtnet.update();
 
   if (emergencyStop.read() == LOW) stopWithError();
-  if (controlArtnet.read() == LOW) toggleArtnet();
+  if (controlArtnet.read() == LOW) {
+    if (!sysHomed) sysHome();
+      toggleArtnet();
+  }
 }
 
 // SYSTEM============================================

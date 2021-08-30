@@ -21,7 +21,7 @@ bool artnetEnabled = false;
 bool artnetToggled = false;
 bool sysHomed = false;
 
-signed char mode = 0;
+signed char mode = 9;
 
 // Timers------------------------
 elapsedMillis lightUpdateTimer;
@@ -109,7 +109,6 @@ void setup() {
 
   FastLED.setBrightness(255);
   FastLED.addLeds(octoBridge, leds, NUM_LED_FIXTURES * LEDS_PER_FIXTURE).setCorrection(TEMPERATURE_OFFSET);
-  FastLED.show();
   
 }
 
@@ -119,7 +118,7 @@ void loop() {
   // PERIPHERALS UPDATE=========================================
   if (lastPeripheralReadTimer > PERIPHERAL_REFRESH_MILLIS) {
     if (irSense.decode(&results)) { decodeIrData(results.value); irSense.resume(); } // decode IR and Resume if IR
-    updateHardwarePeripherals();  // update peripherals
+    //updateHardwarePeripherals();  // update peripherals
 
     lastPeripheralReadTimer = 0;  //reset timer
   }
@@ -132,6 +131,7 @@ void loop() {
       analogWrite(STATUS_LED_PIN, 122);
       updateLEDSByDMX();
       updateSteppersByDMX();
+      for (short s = 1; s <= NUM_STEPPERS; s++) cardinal.setStepperSafePosition(s, getSafe(cardinal.getStepperPosition(s)));  // configure new safe positions
     } else {                                        // if we have a connection, but are not receiving an acive signal
       analogWrite(STATUS_LED_PIN, 5);
       setDefaultMotionParameters();
@@ -158,7 +158,6 @@ void loop() {
 
 
   // MOTORS UPDATE======================================
-  for (short s = 1; s <= NUM_STEPPERS; s++) cardinal.setStepperSafePosition(s, getSafe(cardinal.getStepperPosition(s)));  // configure new safe positions
   cardinal.runSteppers();
   
   // LEDS UPDATE========================================
@@ -246,6 +245,7 @@ void setDefaultMotionParameters() {
   for (short s = 1; s <= NUM_STEPPERS; s++) { 
     cardinal.setStepperAcceleration(s, ABSOLUTE_DEFAULT_SPEED); 
     cardinal.setStepperSpeed(s, ABSOLUTE_DEFAULT_ACCELERATION); 
+    cardinal.setStepperSafePosition(s, 0);  // configure new safe positions
     cardinal.setStepperPosition(s, 0); 
   }
 }
@@ -265,7 +265,7 @@ void sysHome() {
   FastLED.show();
   
   cardinal.setHomeSpeed(ABSOLUTE_DEFAULT_SPEED);
-  if (!cardinal.homeSteppers(1,1,HOME_TIMEOUT)) stopWithError();
+  if (!cardinal.homeSteppers(1,2,HOME_TIMEOUT)) stopWithError();
   else sysHomed = true;
 
   setAllColor(0, 255, 0);

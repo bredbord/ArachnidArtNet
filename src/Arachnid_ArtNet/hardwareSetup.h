@@ -6,10 +6,6 @@
 
 // HARDWARE SETUP==============================================================
 
-// PHYSICAL BUTTONS-----------------------------------
-Bounce controlArtnet = Bounce();
-Bounce emergencyStop = Bounce();
-
 // IR-------------------------------------------------
 IRrecv irSense(IR_PIN);
 decode_results results;
@@ -36,6 +32,13 @@ const long IRData[] = {
 
 // MOTION---------------------------------------------
 SafetyStepperArray cardinal = SafetyStepperArray(ENABLE_PIN, SLEEP_PIN, ABSOLUTE_MAX_SPEED, ABSOLUTE_MAX_ACCELERATION);
+byte stepperPresets[NUM_STEPPER_MODES][NUM_STEPPERS] = {
+  {0, 0, 0, 0, 0, 0, 0},
+  {3, 3, 3, 3, 3, 3, 3},
+  {3, 2, 3, 2, 3, 2, 3, 2},
+  {3, 2, 2, 3, 3, 2, 2, 3},
+  {0, 1, 0, 2, 1, 2, 2, 0}
+};
 
 // LEDS-----------------------------------------------
 

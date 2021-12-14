@@ -34,11 +34,11 @@
   #define MAX_ACCELERATION 300
 
 // LEDs--------------------
-  #define LEDS_PER_FIXTURE 25
-  #define BARS_PER_FIXTURE 25
+  #define LEDS_PER_FIXTURE 24
+  #define BARS_PER_FIXTURE 24
   #define TEMPERATURE_OFFSET TypicalSMD5050
 
-  const byte LED_PIN_LIST[NUM_LED_FIXTURES] = {1, 5, 9, 24};  // sequencing of Teensy LED Pins
+  const byte LED_PIN_LIST[NUM_LED_FIXTURES] = {37, 14, 28, 33};  // sequencing of Teensy LED Pins
 
     // Pin layouts on Arachnid Mainboard:
   /*
@@ -57,10 +57,6 @@
 
 // ARTNET----------------------
 #define ARTNET_TIMEOUT_MILLIS 1000
-
-// DMX-------------------------
-#define OPERATIONS_PER_BAR 3
-#define OPERATIONS_PER_FIXTURE (OPERATIONS_PER_STEPPER + (OPERATIONS_PER_BAR * BARS_PER_FIXTURE))  // assumes stepper-> light priority
 
 // STEPPERS--------------------
 #define STEPPERS_PER_FIXTURE 1
@@ -82,8 +78,13 @@
 
 #define MOTION_TIMEOUT_DURATION 3000
 
+// DMX-------------------------
+#define OPERATIONS_PER_BAR 3
+#define OPERATIONS_PER_FIXTURE (OPERATIONS_PER_STEPPER + (OPERATIONS_PER_BAR * BARS_PER_FIXTURE))  // assumes stepper-> light priority
+
 // LED-------------------------
 #define NUM_LEDS (LEDS_PER_FIXTURE * NUM_LED_FIXTURES)
+#define NUM_BARS (NUM_LED_FIXTURES * BARS_PER_FIXTURE)
 #define LEDS_PER_BAR (LEDS_PER_FIXTURE / BARS_PER_FIXTURE)
 #define LED_REFRESH_MILLIS 16
 
@@ -101,5 +102,7 @@
 
 // MODES----------------------
 #define TEMP_MODE_THRESHOLD 7
-#define FX_THRESHOLD 16
-#define NUM_MODES 9
+#define FX_THRESHOLD 10
+#define NUM_MODES 13
+
+#define NUM_STEPPER_MODES 5

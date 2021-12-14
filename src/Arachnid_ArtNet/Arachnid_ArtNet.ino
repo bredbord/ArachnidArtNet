@@ -8,7 +8,6 @@
 #include <SafetyStepperArray.h>
 #include <SPI.h>
 #include <IRremote.h>
-#include <Bounce2.h>
 
 // Local Dependencies
 #include "Teensy4_1ArtNet.h"  // Artnet Library
@@ -16,17 +15,25 @@
 #include "config.h"           // System Configuration Constants
 #include "hardwareSetup.h"    // Hardware List
 
+#include "pride.h"            // Pride animation
+#include "pacifica.h"         // Pacifica animation
+#include "borealis.h"         // Aurora animation
+
 // Global Status Variables-------
 bool artnetEnabled = false;
 bool artnetToggled = false;
 bool sysHomed = false;
 
 signed char mode = 9;
+signed char stepperMode = 0;
 
 // Timers------------------------
 elapsedMillis lightUpdateTimer;
 elapsedMillis lastPacketTimer;
 elapsedMillis lastPeripheralReadTimer;
+elapsedMillis pacificaTimer;
+elapsedMillis borealisTimer;
+elapsedMillis strobeTimer;
 
 //FUNCTION PROTORYPES ================================================================
 
@@ -43,6 +50,8 @@ int getSafe(int);
 void setDefaultMotionParameters();
 
 // LEDS----------------------------------------------------------
+void setIndividualPixel(int, byte, byte, byte);
+
 void setBarColor(int, byte, byte, byte, byte);
 void setBarColor(int, byte, int);
 
@@ -76,28 +85,21 @@ void setup() {
   // ONBOARD PINS-------------------------------
   pinMode(STATUS_LED_PIN, OUTPUT);
   
-  // PHYSICAL BUTTONS---------------------------
-  pinMode(ARTNET_START_PIN, INPUT_PULLUP);
-  pinMode(EMERGENCY_STOP_PIN, INPUT_PULLUP);
-
-  controlArtnet.attach(ARTNET_START_PIN);
-  emergencyStop.attach(EMERGENCY_STOP_PIN);
-  controlArtnet.interval(5);
-  emergencyStop.interval(5);
-  
   // IR-----------------------------------------
   irSense.enableIRIn();
 
   // MOTION-------------------------------------
-  cardinal.addStepper(3, 2, 4);
-  cardinal.addStepper(7, 6, 8);
-  cardinal.addStepper(11, 10, 12);
-  cardinal.addStepper(26, 25, 27);
-  cardinal.addStepper(30, 29, 31);
-  cardinal.addStepper(35, 34, 36);
-  cardinal.addStepper(39, 38, 40);
+  //cardinal.addStepper(39, 38, 40);
+  //cardinal.addStepper(3, 2, 4);
   cardinal.addStepper(16, 15, 17);
-
+  cardinal.addStepper(7, 6, 8);
+  cardinal.addStepper(30, 29, 31);
+  cardinal.addStepper(11, 10, 12);
+  cardinal.addStepper(35, 34, 36);
+  cardinal.addStepper(26, 25, 27);
+  cardinal.addStepper(39, 38, 40);
+  cardinal.addStepper(3, 2, 4);
+  
   cardinal.begin();
   cardinal.reverseSteppers(true);
 
@@ -107,8 +109,11 @@ void setup() {
   octoLEDs.begin(); // start the OctoWS line
   octoBridge = new FastLED4Teensy4<RGB, WS2811_800kHz>(&octoLEDs);  // init new led bridge
 
-  FastLED.setBrightness(255);
+  FastLED.setBrightness(225);
   FastLED.addLeds(octoBridge, leds, NUM_LED_FIXTURES * LEDS_PER_FIXTURE).setCorrection(TEMPERATURE_OFFSET);
+
+  // FX-----------
+  Serial.begin(9600);
   
 }
 
@@ -117,9 +122,7 @@ void loop() {
 
   // PERIPHERALS UPDATE=========================================
   if (lastPeripheralReadTimer > PERIPHERAL_REFRESH_MILLIS) {
-    if (irSense.decode(&results)) { decodeIrData(results.value); irSense.resume(); } // decode IR and Resume if IR
-    //updateHardwarePeripherals();  // update peripherals
-
+    if (irSense.decode(&results)) { decodeIrData(results.value); irSense.resume(); Serial.println(stepperMode); } // decode IR and Resume if IR
     lastPeripheralReadTimer = 0;  //reset timer
   }
 
@@ -129,9 +132,11 @@ void loop() {
 
     if (lastPacketTimer < ARTNET_TIMEOUT_MILLIS) {  // if we are receiving an active signal
       analogWrite(STATUS_LED_PIN, 122);
+      cardinal.setTimeoutMillis(30000);
+      
       updateLEDSByDMX();
       updateSteppersByDMX();
-      for (short s = 1; s <= NUM_STEPPERS; s++) cardinal.setStepperSafePosition(s, getSafe(cardinal.getStepperPosition(s)));  // configure new safe positions
+      
     } else {                                        // if we have a connection, but are not receiving an acive signal
       analogWrite(STATUS_LED_PIN, 5);
       setDefaultMotionParameters();
@@ -140,10 +145,10 @@ void loop() {
 
   // NO ARTNET---------------------------------
   else {
-    analogWrite(STATUS_LED_PIN, 0);
 
     //MOTORS------------------
     setDefaultMotionParameters();
+    for (unsigned char s = 1; s <= NUM_STEPPERS; s++) cardinal.setStepperPosition(s, stepperPresets[stepperMode][s-1] * MICROSTEPS * STEPS_PER_REV);
 
     //LEDS--------------------
     // Temperature calibration settings based on mode state
@@ -152,16 +157,22 @@ void loop() {
       else setAllTemperature(LEDColors[mode]);
     }
     else {
-      // dynamic FX such as pride and pacifica
+      if (mode == 10) pride();
+      if (mode == 11) if (pacificaTimer > LED_REFRESH_MILLIS*2) { pacifica_loop(); pacificaTimer = 0; }
+      //if (mode == 13) if (borealisTimer > LED_REFRESH_MILLIS) { borealis_loop(); borealisTimer = 0; }
     }
   }
 
 
   // MOTORS UPDATE======================================
+  for (unsigned char s = 1; s <= NUM_STEPPERS; s++) cardinal.setStepperSafePosition(s, getSafe(cardinal.getStepperPosition(s)));  // configure new safe positions
   cardinal.runSteppers();
   
   // LEDS UPDATE========================================
-  if (lightUpdateTimer > LED_REFRESH_MILLIS) { FastLED.show(); lightUpdateTimer = 0; }
+  if (lightUpdateTimer > LED_REFRESH_MILLIS) {
+    lightUpdateTimer = 0;
+    FastLED.show();
+  }
 } 
 
 
@@ -177,25 +188,15 @@ void loop() {
 
 void stopWithError() {
   setAllColor(0,0,0);
-  for (int i = 1; i < NUM_LEDS; i += pow(i, 2)) leds[i] = 0xFF0000;
+  for (unsigned int i = 1; i < NUM_LEDS; i += pow(i, 2)) leds[i] = 0xFF0000;
   FastLED.show();
   cardinal.emergencyStop();
-}
-
-void updateHardwarePeripherals() {
-  emergencyStop.update();
-  controlArtnet.update();
-
-  if (emergencyStop.read() == LOW) stopWithError();
-  if (controlArtnet.read() == LOW) {
-    if (!sysHomed) sysHome();
-      toggleArtnet();
-  }
 }
 
 // IR------------------------------------------------------------
 void decodeIrData(long irdata) {
   byte i = 0;
+  unsigned char currentBrightness = FastLED.getBrightness();
   while (i < 18) { if (IRData[i] == irdata) { break; } else {i++;} }
   
   switch(i) {
@@ -213,12 +214,12 @@ void decodeIrData(long irdata) {
       break;
     
     case 3: // Brightness Down
-      if (FastLED.getBrightness() - 25 > 0) FastLED.setBrightness(FastLED.getBrightness() - 25);
-      else FastLED.setBrightness(0);
+      if (currentBrightness - 15 > 25) FastLED.setBrightness(currentBrightness - 15);
+      else FastLED.setBrightness(25);
       break;
 
     case 4: // Brightness Up
-      if (FastLED.getBrightness() + 25 < 255) FastLED.setBrightness(FastLED.getBrightness() + 25);
+      if (currentBrightness + 15 < 255) FastLED.setBrightness(currentBrightness + 15);
       else FastLED.setBrightness(255);
       break;
 
@@ -227,12 +228,23 @@ void decodeIrData(long irdata) {
       if (mode > NUM_MODES) mode = 0;
       break;
 
+    case 7:
+      stepperMode++;
+      if (stepperMode > NUM_STEPPER_MODES-1) stepperMode = 0;
+      break;
+
+    case 8:
+      stepperMode--;
+      if (stepperMode < 0) stepperMode = NUM_STEPPER_MODES-1;
+      break;
+
     case 10: // Color Palatte
       mode--;
       if (mode < 0) mode = NUM_MODES;
       break;
 
-    case 15: // Rainbow
+
+    case 14: // Rainbow
       sysHome();
       break;
       
@@ -242,18 +254,16 @@ void decodeIrData(long irdata) {
 // MOTION--------------------------------------------------------
 void setDefaultMotionParameters() {
   cardinal.setTimeoutMillis(3000);
-  for (short s = 1; s <= NUM_STEPPERS; s++) { 
+  for (unsigned char s = 1; s <= NUM_STEPPERS; s++) { 
     cardinal.setStepperAcceleration(s, ABSOLUTE_DEFAULT_SPEED); 
     cardinal.setStepperSpeed(s, ABSOLUTE_DEFAULT_ACCELERATION); 
-    cardinal.setStepperSafePosition(s, 0);  // configure new safe positions
-    cardinal.setStepperPosition(s, 0); 
   }
 }
 
 int getSafe(int pos) {
   if (pos == 0) return 0;
 
-  int displacement = pos % (STEPS_PER_REV * MICROSTEPS);
+  unsigned int displacement = pos % (STEPS_PER_REV * MICROSTEPS);
   byte rotations = pos / (STEPS_PER_REV * MICROSTEPS);
   
   if (displacement > (STEPS_PER_REV * MICROSTEPS)/2 ) return (rotations + 1) * (STEPS_PER_REV * MICROSTEPS);  // if we're closer to the next rev, return one rev up
@@ -265,12 +275,13 @@ void sysHome() {
   FastLED.show();
   
   cardinal.setHomeSpeed(ABSOLUTE_DEFAULT_SPEED);
-  if (!cardinal.homeSteppers(1,2,HOME_TIMEOUT)) stopWithError();
+  if (!cardinal.homeSteppers(1,6,HOME_TIMEOUT)) stopWithError();
   else sysHomed = true;
 
   setAllColor(0, 255, 0);
   FastLED.show();
 }
+
 
 // LEDS----------------------------------------------------------
 
@@ -282,6 +293,12 @@ RGBTripple hexToRGB(int hex) {
   };
 
   return t;
+}
+
+void setIndividualPixel(int pixel, byte red, byte green, byte blue) {
+   leds[pixel].r = red;
+   leds[pixel].g = green;
+   leds[pixel].b = blue;
 }
 
 void setBarColor(int bar, byte fixture, byte r, byte g, byte b) {
@@ -358,24 +375,22 @@ void toggleArtnet() {
 }
 
 void updateLEDSByDMX() {
-  int DMXOffset;  // offset for DMX data
+  int DMXOffset = (DMX_START + (NUM_STEPPERS * OPERATIONS_PER_STEPPER));  // offset for DMX data
   for (int f = 1; f <= NUM_LED_FIXTURES; f++) {                 // for each fixture
     for (int b = 1; b <= BARS_PER_FIXTURE; b++) {               // for each bar in the fixture
-  
-        //DMXOffset = (((b-1) * OPERATIONS_PER_BAR) + OPERATIONS_PER_STEPPER) * f;  // and dmx data location
-        DMXOffset = ((NUM_STEPPERS * OPERATIONS_PER_STEPPER) + ((b-1) * OPERATIONS_PER_BAR) * f) + DMX_START;
         setBarColor(b, f, DMXData[DMXOffset], DMXData[DMXOffset+1], DMXData[DMXOffset+2]);  // set bar b at fixture f to the DMX values
+        DMXOffset += OPERATIONS_PER_BAR;
     }
   }
 }
 
 void updateSteppersByDMX() {
   int DMXOffset;
-  for (short s = 0; s < NUM_STEPPERS; s++) {
+  for (byte s = 0; s < NUM_STEPPERS; s++) {
     DMXOffset = DMX_START + (s * OPERATIONS_PER_STEPPER) - 1;
-    
-    cardinal.setStepperPosition(s+1, DMXData[DMXOffset] * 120);
-    cardinal.setStepperSpeed(s+1, map(DMXData[DMXOffset+1], 0, 255, ABSOLUTE_MAX_SPEED, ABSOLUTE_MIN_SPEED));
+
     cardinal.setStepperAcceleration(s+1, map(DMXData[DMXOffset+1], 0, 255, ABSOLUTE_MAX_ACCELERATION, ABSOLUTE_MIN_ACCELERATION));
+    cardinal.setStepperSpeed(s+1, map(DMXData[DMXOffset+1], 0, 255, ABSOLUTE_MAX_SPEED, ABSOLUTE_MIN_SPEED));
+    cardinal.setStepperPosition(s+1, DMXData[DMXOffset] * 120);
   }
 }
